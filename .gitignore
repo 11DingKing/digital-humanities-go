@@ -1,0 +1,4 @@
+data.sqlite
+*.db
+.gocache/
+.gomark-authoring/
