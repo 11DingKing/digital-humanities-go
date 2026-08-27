@@ -16,8 +16,11 @@ func (s *Service) AddCorpusWithContext(ctx context.Context, u domain.User, proje
 		return domain.ErrInvalid
 	}
 	return storage.TxDetached(ctx, s.DB, func(tx *sql.Tx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		now := s.Clock.Now().Format(time.RFC3339Nano)
-		_, err := tx.ExecContext(context.Background(), "INSERT INTO corpora(project_id,title,language,license,sensitivity,status,bytes,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)", projectID, title, "und", "pending", domain.Restricted, domain.Collected, 1, now, now)
+		_, err := tx.ExecContext(ctx, "INSERT INTO corpora(project_id,title,language,license,sensitivity,status,bytes,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)", projectID, title, "und", "pending", domain.Restricted, domain.Collected, 1, now, now)
 		return err
 	})
 }
