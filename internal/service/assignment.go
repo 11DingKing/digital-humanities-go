@@ -12,5 +12,5 @@ func (s *Service) ReassignTask(ctx context.Context, u domain.User, taskID, assig
 	if taskID <= 0 || assigneeID <= 0 {
 		return domain.ErrInvalid
 	}
-	return s.Tasks.ReassignRunning(ctx, taskID, assigneeID)
+	return s.Tasks.Reassign(ctx, taskID, assigneeID)
 }

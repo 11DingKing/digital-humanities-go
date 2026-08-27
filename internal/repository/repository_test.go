@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"github.com/11DingKing/digital-humanities-go/internal/domain"
 	"github.com/11DingKing/digital-humanities-go/internal/testutil"
 	"testing"
@@ -84,5 +85,40 @@ func TestTaskRequeue(t *testing.T) {
 	ts.Claim(context.Background(), tid, 1, uid, time.Now().Add(-time.Hour))
 	if e := ts.RequeueExpired(context.Background(), time.Now()); e != nil {
 		t.Fatal(e)
+	}
+}
+func TestTaskReassignProtectsRunning(t *testing.T) {
+	db := testutil.DB(t)
+	u := Users{db}
+	owner, _ := u.Create(context.Background(), domain.User{Email: "owner@x", Name: "Owner", Role: domain.RoleAnnotator, PasswordHash: "h", CreatedAt: time.Now()})
+	other, _ := u.Create(context.Background(), domain.User{Email: "other@x", Name: "Other", Role: domain.RoleAnnotator, PasswordHash: "h", CreatedAt: time.Now()})
+	p := Projects{db}
+	pid, _ := p.Create(context.Background(), domain.Project{Name: "P", QuotaBytes: 10, Status: domain.Draft, CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	c := Corpora{db}
+	cid, _ := c.Create(context.Background(), domain.Corpus{ProjectID: pid, Title: "C", Language: "en", License: "CC", Sensitivity: domain.Public, Status: domain.Collected, Bytes: 1, CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	b := Batches{db}
+	bid, _ := b.Create(context.Background(), domain.Batch{CorpusID: cid, Name: "B", Status: domain.BatchPending, Priority: 1, Concurrency: 1, CreatedAt: time.Now()})
+	ts := Tasks{db}
+	tid, _ := ts.Create(context.Background(), domain.AnnotationTask{BatchID: bid, AssigneeID: owner, Segment: "s", Status: domain.TaskQueued, CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	// Reassigning a queued task to a new nominal owner is allowed.
+	if e := ts.Reassign(context.Background(), tid, other); e != nil {
+		t.Fatalf("reassign queued: %v", e)
+	}
+	// The annotator claims the shard, transitioning it to running.
+	if e := ts.Claim(context.Background(), tid, 2, owner, time.Now().Add(time.Hour)); e != nil {
+		t.Fatalf("claim: %v", e)
+	}
+	// Project lead attempts to silently reassign the in-flight task to someone
+	// else. This must be rejected to protect the running task's ownership.
+	if e := ts.Reassign(context.Background(), tid, other); !errors.Is(e, domain.ErrConflict) {
+		t.Fatalf("expected conflict reassigning running task, got %v", e)
+	}
+	// The original owner must remain the recorded assignee.
+	var got int64
+	if e := db.QueryRowContext(context.Background(), "SELECT assignee_id FROM annotation_tasks WHERE id=?", tid).Scan(&got); e != nil {
+		t.Fatal(e)
+	}
+	if got != owner {
+		t.Fatalf("assignee rewritten to %d, expected owner %d", got, owner)
 	}
 }

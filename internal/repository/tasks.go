@@ -29,14 +29,20 @@ func (r Tasks) Claim(ctx context.Context, id, ver, assignee int64, lease time.Ti
 	return nil
 }
 
-func (r Tasks) ReassignRunning(ctx context.Context, id, assignee int64) error {
-	res, err := r.DB.ExecContext(ctx, "UPDATE annotation_tasks SET assignee_id=?,updated_at=? WHERE id=?", assignee, time.Now().UTC().Format(time.RFC3339Nano), id)
+// Reassign changes the nominal assignee of a task. It is only permitted while
+// the task is queued, i.e. no annotator has claimed it yet. A running task is
+// actively owned (an annotator claimed the shard and holds the lease), so
+// reassigning it would silently rewrite the owner and leave two attributions
+// for one shard. Such an update is rejected with ErrConflict to protect the
+// running task's ownership.
+func (r Tasks) Reassign(ctx context.Context, id, assignee int64) error {
+	res, err := r.DB.ExecContext(ctx, "UPDATE annotation_tasks SET assignee_id=?,version=version+1,updated_at=? WHERE id=? AND status='queued'", assignee, time.Now().UTC().Format(time.RFC3339Nano), id)
 	if err != nil {
 		return err
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return domain.ErrNotFound
+		return domain.ErrConflict
 	}
 	return nil
 }
