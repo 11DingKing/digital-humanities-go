@@ -37,7 +37,18 @@ func (r Corpora) Transition(ctx context.Context, id int64, from, to domain.Corpu
 	return nil
 }
 func (r Corpora) UpdateLicense(ctx context.Context, id int64, license string, version int64) error {
-	res, e := r.DB.ExecContext(ctx, "UPDATE corpora SET license=?,version=version+1,updated_at=? WHERE id=? AND version=?", license, time.Now().UTC().Format(time.RFC3339Nano), id, version)
+	return updateLicense(ctx, r.DB, id, license, version)
+}
+
+// UpdateLicenseTx applies the license change within an existing
+// transaction so the history record can commit or roll back together
+// with the corpus update, preserving the authorization trail.
+func (r Corpora) UpdateLicenseTx(ctx context.Context, tx *sql.Tx, id int64, license string, version int64) error {
+	return updateLicense(ctx, tx, id, license, version)
+}
+
+func updateLicense(ctx context.Context, db dbtx, id int64, license string, version int64) error {
+	res, e := db.ExecContext(ctx, "UPDATE corpora SET license=?,version=version+1,updated_at=? WHERE id=? AND version=?", license, time.Now().UTC().Format(time.RFC3339Nano), id, version)
 	if e != nil {
 		return e
 	}
