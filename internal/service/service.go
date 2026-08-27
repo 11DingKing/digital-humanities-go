@@ -156,8 +156,11 @@ func (s *Service) StartBatch(ctx context.Context, u domain.User, id int64, req s
 	if e = s.DB.QueryRowContext(ctx, "SELECT c.status FROM corpora c JOIN batches b ON b.corpus_id=c.id WHERE b.id=?", id).Scan(&corpusStatus); e != nil {
 		return e
 	}
-	if corpusStatus == string(domain.Released) {
+	switch domain.CorpusStatus(corpusStatus) {
+	case domain.Released:
 		return fmt.Errorf("%w: released corpus", domain.ErrConflict)
+	case domain.Withdrawn:
+		return fmt.Errorf("%w: withdrawn corpus", domain.ErrConflict)
 	}
 	if e = b.Transition(domain.BatchRunning); e != nil {
 		return e

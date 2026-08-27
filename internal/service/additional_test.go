@@ -110,6 +110,48 @@ func TestBatchStartRole(t *testing.T) {
 		}
 	}
 }
+func TestBatchStartWithdrawnCorpus(t *testing.T) {
+	s := setup(t)
+	u := lead(t, s)
+	p, _ := s.CreateProject(context.Background(), u, "P", "", 100)
+	c, _ := s.AddCorpus(context.Background(), u, p.ID, "C", "en", "CC", domain.Public, 1)
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Cleansed, "r"); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Licensed, "r"); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Withdrawn, "r"); e != nil {
+		t.Fatal(e)
+	}
+	b, _ := s.CreateBatch(context.Background(), u, c.ID, "b", 1, 1)
+	if e := s.StartBatch(context.Background(), u, b.ID, "r"); !errors.Is(e, domain.ErrConflict) {
+		t.Fatalf("expected conflict on withdrawn corpus, got %v", e)
+	}
+	got, _ := s.Batches.Get(context.Background(), b.ID)
+	if got.Status != domain.BatchPending {
+		t.Fatalf("batch regressed to %s", got.Status)
+	}
+}
+func TestBatchStartReleasedCorpus(t *testing.T) {
+	s := setup(t)
+	u := lead(t, s)
+	p, _ := s.CreateProject(context.Background(), u, "P", "", 100)
+	c, _ := s.AddCorpus(context.Background(), u, p.ID, "C", "en", "CC", domain.Public, 1)
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Cleansed, "r"); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Licensed, "r"); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.AdvanceCorpus(context.Background(), u, c.ID, domain.Released, "r"); e != nil {
+		t.Fatal(e)
+	}
+	b, _ := s.CreateBatch(context.Background(), u, c.ID, "b", 1, 1)
+	if e := s.StartBatch(context.Background(), u, b.ID, "r"); !errors.Is(e, domain.ErrConflict) {
+		t.Fatalf("expected conflict on released corpus, got %v", e)
+	}
+}
 func TestLogoutIdempotent(t *testing.T) {
 	s := setup(t)
 	u := lead(t, s)
