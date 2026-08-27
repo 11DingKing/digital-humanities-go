@@ -87,14 +87,14 @@ func (s *Service) AddCorpus(ctx context.Context, u domain.User, pid int64, title
 	var c domain.Corpus
 	err := storage.Tx(ctx, s.DB, func(tx *sql.Tx) error {
 		var quota, used int64
-		if e := tx.QueryRowContext(context.Background(), "SELECT quota_bytes,COALESCE((SELECT SUM(bytes) FROM corpora WHERE project_id=? AND status!='withdrawn'),0) FROM projects WHERE id=?", pid, pid).Scan(&quota, &used); e != nil {
+		if e := tx.QueryRowContext(ctx, "SELECT quota_bytes,COALESCE((SELECT SUM(bytes) FROM corpora WHERE project_id=? AND status!='withdrawn'),0) FROM projects WHERE id=?", pid, pid).Scan(&quota, &used); e != nil {
 			return e
 		}
 		if used+size > quota {
 			return fmt.Errorf("%w: quota exceeded", domain.ErrConflict)
 		}
 		now := s.Clock.Now()
-		res, e := tx.ExecContext(context.Background(), "INSERT INTO corpora(project_id,title,language,license,sensitivity,status,bytes,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)", pid, title, lang, license, sens, domain.Collected, size, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+		res, e := tx.ExecContext(ctx, "INSERT INTO corpora(project_id,title,language,license,sensitivity,status,bytes,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)", pid, title, lang, license, sens, domain.Collected, size, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 		if e != nil {
 			return e
 		}

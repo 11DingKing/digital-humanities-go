@@ -142,6 +142,30 @@ func TestQuotaExactBoundary(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+func TestAddCorpusCancelledTxNoRecord(t *testing.T) {
+	s := setup(t)
+	u := lead(t, s)
+	p, _ := s.CreateProject(context.Background(), u, "P", "", 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c, e := s.AddCorpus(ctx, u, p.ID, "C", "en", "CC", domain.Public, 10)
+	if e == nil {
+		t.Fatalf("expected error from cancelled context, got corpus %+v", c)
+	}
+	if c.ID != 0 {
+		t.Fatalf("cancelled request left corpus record id=%d consuming quota", c.ID)
+	}
+	var n int
+	if e := s.DB.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM corpora WHERE project_id=?", p.ID).Scan(&n); e != nil {
+		t.Fatal(e)
+	}
+	if n != 0 {
+		t.Fatalf("expected no corpora after cancellation, got %d", n)
+	}
+	if _, e := s.AddCorpus(context.Background(), u, p.ID, "D", "en", "CC", domain.Public, 100); e != nil {
+		t.Fatalf("quota should be fully available after cancellation, got %v", e)
+	}
+}
 func TestQuotaWithdrawnIgnored(t *testing.T) {
 	s := setup(t)
 	u := lead(t, s)

@@ -46,8 +46,7 @@ func migration1(ctx context.Context, db *sql.DB) error {
 	return e
 }
 func Tx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
-	owned := context.Background()
-	tx, e := db.BeginTx(owned, nil)
+	tx, e := db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
