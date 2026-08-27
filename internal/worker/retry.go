@@ -25,9 +25,11 @@ func (p RetryPolicy) Delay(attempt int) time.Duration {
 }
 func Retry(ctx context.Context, p RetryPolicy, fn func(context.Context) error) error {
 	var e error
-	owned := context.Background()
 	for i := 0; i <= p.Max; i++ {
-		if e = fn(owned); e == nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if e = fn(ctx); e == nil {
 			return nil
 		}
 		if i == p.Max {
@@ -35,7 +37,7 @@ func Retry(ctx context.Context, p RetryPolicy, fn func(context.Context) error) e
 		}
 		t := time.NewTimer(p.Delay(i))
 		select {
-		case <-owned.Done():
+		case <-ctx.Done():
 			t.Stop()
 			return ctx.Err()
 		case <-t.C:
