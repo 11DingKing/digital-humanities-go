@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/11DingKing/digital-humanities-go/internal/audit"
 	"github.com/11DingKing/digital-humanities-go/internal/domain"
+	"github.com/11DingKing/digital-humanities-go/internal/storage"
 	"time"
 )
 
@@ -50,15 +52,21 @@ func (s *Service) PublishAnalysisWithAudit(ctx context.Context, u domain.User, i
 	if u.Role != domain.RoleLead || result == "" {
 		return domain.ErrForbidden
 	}
-	res, err := s.DB.ExecContext(ctx, "UPDATE analyses SET status='published',result=? WHERE id=? AND status='draft'", result, id)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n != 1 {
-		return domain.ErrConflict
-	}
-	return s.Audit.AnalysisPublished(ctx, u.ID, id, request, s.Clock.Now())
+	now := s.Clock.Now()
+	return storage.Tx(ctx, s.DB, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, "UPDATE analyses SET status='published',result=? WHERE id=? AND status='draft'", result, id)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		if n != 1 {
+			return domain.ErrConflict
+		}
+		// Write the audit record in the same transaction as the status change
+		// so that a rejected/failed audit write rolls back the publication and
+		// keeps the approval state consistent with the audit trail.
+		return audit.Append(ctx, tx, u.ID, "analysis", id, "analysis_published", "ok", request, "", now)
+	})
 }
 func EnsureAnalysisProject(ctx context.Context, db *sql.DB, project, corpus int64) error {
 	var n int
